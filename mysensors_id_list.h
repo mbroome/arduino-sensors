@@ -8,6 +8,7 @@
 #define BASEMENT2_NODE_ID    7
 #define BASEMENT3_NODE_ID    8
 
+/*
 // list of sensors
 #define KITCHEN1_TEMP1    20
 #define SALTWATER1_TEMP1  21
@@ -33,3 +34,4 @@
 
 // starting temperature ids.  we run up to 10 temp probes per arduino
 #define BASEMENT1_TEMP1   230
+*/

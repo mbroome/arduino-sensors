@@ -2,26 +2,50 @@
 #define MY_DEBUG    // Enables debug messages in the serial log
 #define MY_REPEATER_NODE
 
-#include "C:/Users/mbroome/Documents/Arduino/sensors/mysensors_id_list.h"
+#include "C:/Users/mbroome/Documents/Arduino/arduino-sensors/mysensors_id_list.h"
 
 #define MY_NODE_ID BASEMENT1_NODE_ID
 
-#define ENABLE_TEMP_PROBE  0
+#define ENABLE_TEMP_PROBE  1
 #define ENABLE_AMP_PROBE   0
 #define ENABLE_RELAY_PROBE 1
+#define ENABLE_FLOAT_PROBE 1
 
+////////////////////////////////////////////////////////
+// define some pins
+#define AMPCLAMP_CLAMP1_PIN      6
+#define AMPCLAMP_CLAMP2_PIN      7
+
+#define FLOAT_SWITCH1_PIN        14
+#define FLOAT_SWITCH2_PIN        15
+
+#define LED_PIN                  13
+
+////////////////////////////////////////////////////////
+// define child ids
+#define RELAY_FIRST_ID        0
+#define TEMPERATURE_FIRST_ID 10
+
+#define AMPCLAMP_CLAMP1_ID   20
+#define AMPCLAMP_CLAMP2_ID   21
+
+#define FLOAT_SWITCH1_ID     30
+#define FLOAT_SWITCH2_ID     31
+
+////////////////////////////////////////////////////////
+// Actually do the work...
 #include <MySensors.h>
 #include <SPI.h>
 #include <DallasTemperature.h>
 #include <OneWire.h>
+#include <Bounce2.h>
+
 #include "EmonLib.h"                   // Include Emon Library
 EnergyMonitor emon1;                   // Create an instance
 EnergyMonitor emon2;                   // Create an instance
 
 #define SHIFT_REGISTER_DATA_PIN   4
 #define SHIFT_REGISTER_CLOCK_PIN  5
-#define AMPCLAMP1_CLAMP1_PIN      6
-#define AMPCLAMP1_CLAMP2_PIN      7
 
 #define ONE_WIRE_BUS 3 // Pin where dallase sensor is connected 
 
@@ -32,64 +56,62 @@ DallasTemperature sensors(&oneWire); // Pass the oneWire reference to Dallas Tem
 #define MAX_ATTACHED_TEMP_SENSORS 10
 
 float lastTemperature[MAX_ATTACHED_TEMP_SENSORS];
+int lastFloatState[2];
 unsigned long previousMillis = 0;
 bool initialSend = false;
 
+int connectedTempuratureProbes = 0;
+
+// Instantiate a Bounce object
+Bounce debouncer1 = Bounce();
+
+// Instantiate another Bounce object
+Bounce debouncer2 = Bounce();
+
+
 // Initialize temperature message
-MyMessage msgTemperature(BASEMENT1_TEMP1, V_TEMP);
+MyMessage msgTemperature(TEMPERATURE_FIRST_ID, V_TEMP);
 
-MyMessage msgClamp1(BASEMENT1_CLAMP1, V_WATT);
-MyMessage msgClamp2(BASEMENT1_CLAMP2, V_WATT);
+MyMessage msgClamp1(AMPCLAMP_CLAMP1_ID, V_WATT);
+MyMessage msgClamp2(AMPCLAMP_CLAMP2_ID, V_WATT);
 
-MyMessage msgRelay0(BASEMENT1_RELAY0, V_STATUS);
-MyMessage msgRelay1(BASEMENT1_RELAY1, V_STATUS);
-MyMessage msgRelay2(BASEMENT1_RELAY2, V_STATUS);
-MyMessage msgRelay3(BASEMENT1_RELAY3, V_STATUS);
-MyMessage msgRelay4(BASEMENT1_RELAY4, V_STATUS);
-MyMessage msgRelay5(BASEMENT1_RELAY5, V_STATUS);
-MyMessage msgRelay6(BASEMENT1_RELAY6, V_STATUS);
-MyMessage msgRelay7(BASEMENT1_RELAY7, V_STATUS);
-
+MyMessage msgFloatSwitch1(FLOAT_SWITCH1_ID, V_STATUS);
+MyMessage msgFloatSwitch2(FLOAT_SWITCH2_ID, V_STATUS);
 
 bool initialValueSent = false;
 bool initialValueRecv = false;
 
 byte relayState = B11111111;
 
-void setup()
-{
-  Serial.begin(115200);
-  Serial.println("Startup");
-
-  sensors.setResolution(TEMP_12_BIT);
-
-  emon1.current(AMPCLAMP1_CLAMP1_PIN, 32.1);             // Current: input pin, calibration.
-  emon2.current(AMPCLAMP1_CLAMP2_PIN, 32.1);             // Current: input pin, calibration.
-
+void before() {
   pinMode(SHIFT_REGISTER_DATA_PIN, OUTPUT); // make the data pin an output
   pinMode(SHIFT_REGISTER_CLOCK_PIN, OUTPUT); // make the clock pin an output
 
   // start with all of the relays off
   shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState);
 
-  /*
-    shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
-    delay(1000);
-    bitWrite(relayState, 3, LOW);
-    shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
-    delay(1000);
-    bitWrite(relayState, 2, LOW);
-    shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
-    delay(1000);
-    bitWrite(relayState, 1, LOW);
-    shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
-    delay(1000);
-    bitWrite(relayState, 3, HIGH);
-    shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
-    delay(1000);
-    bitWrite(relayState, 2, HIGH);
-    shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
-  */
+}
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println("Startup");
+
+  // setup the float switches
+  pinMode(FLOAT_SWITCH1_PIN, INPUT_PULLUP);
+  pinMode(FLOAT_SWITCH2_PIN, INPUT_PULLUP);
+
+  debouncer1.attach(FLOAT_SWITCH1_PIN);
+  debouncer1.interval(5); // interval in ms
+
+  debouncer2.attach(FLOAT_SWITCH2_PIN);
+  debouncer2.interval(5); // interval in ms
+
+  sensors.setResolution(TEMP_12_BIT);
+
+  emon1.current(AMPCLAMP_CLAMP1_PIN, 32.1);             // Current: input pin, calibration.
+  emon2.current(AMPCLAMP_CLAMP2_PIN, 32.1);             // Current: input pin, calibration.
+
+  pinMode(LED_PIN, OUTPUT);
 }
 
 void presentation() {
@@ -101,86 +123,131 @@ void presentation() {
   sensors.setWaitForConversion(false);
 
   // Send the sketch version information to the gateway and Controller
-  sendSketchInfo("Basement1", "1.0");
+  sendSketchInfo("Basement1", "1.0", true);
+      wait(500);
 
   // Present all sensors to controller
-  for (int i = BASEMENT1_TEMP1; i < BASEMENT1_TEMP1 + MAX_ATTACHED_TEMP_SENSORS; i++) {
-    present(i, S_TEMP);
+  if (ENABLE_TEMP_PROBE) {
+    delay(200);
+    connectedTempuratureProbes = sensors.getDeviceCount();
+    for (int i = TEMPERATURE_FIRST_ID; i < TEMPERATURE_FIRST_ID + connectedTempuratureProbes; i++) {
+      char c[20];
+      sprintf(c, "temp%d", i);
+      Serial.println(c);
+      present(i, S_TEMP, c);
+      wait(500);
+    }
   }
 
   // Register all sensors to gw (they will be created as child devices)
-  present(BASEMENT1_CLAMP1, S_POWER);
-  present(BASEMENT1_CLAMP2, S_POWER);
+  if (ENABLE_AMP_PROBE) {
+    present(AMPCLAMP_CLAMP1_ID, S_POWER);
+      wait(500);
+    present(AMPCLAMP_CLAMP2_ID, S_POWER);
+      wait(500);
+  }
 
   // now we do all of the relays
-  present(BASEMENT1_RELAY0, S_BINARY, "relay0");
-  present(BASEMENT1_RELAY1, S_BINARY, "relay1");
-  present(BASEMENT1_RELAY2, S_BINARY, "relay2");
-  present(BASEMENT1_RELAY3, S_BINARY);
-  present(BASEMENT1_RELAY4, S_BINARY);
-  present(BASEMENT1_RELAY5, S_BINARY);
-  present(BASEMENT1_RELAY6, S_BINARY);
-  present(BASEMENT1_RELAY7, S_BINARY);
+  if (ENABLE_RELAY_PROBE) {
+    for (int i = 0; i < 8; i++) {
+      char c[20];
+      sprintf(c, "relay%d", i);
+      Serial.println(c);
+      present(i, S_LIGHT, c);
+      wait(500);
+    }
+  }
 
-  send(msgRelay0.set(0));
-  send(msgRelay1.set(0));
-  send(msgRelay2.set(0));
-  send(msgRelay3.set(0));
-  send(msgRelay4.set(0));
-  send(msgRelay5.set(0));
-  send(msgRelay6.set(0));
-  send(msgRelay7.set(0));
-
+  if (ENABLE_FLOAT_PROBE) {
+      present(FLOAT_SWITCH1_ID, S_BINARY, "float1");
+      wait(500);
+      present(FLOAT_SWITCH2_ID, S_BINARY, "float2");
+      wait(500);
+  }
 }
 
 
 void loop()
 {
+  // Update the Bounce instances :
+  debouncer1.update();
+  debouncer2.update();
+
   // wait at least SLEEP_TIME until we poll again
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= SLEEP_TIME) {
     // save the last time you blinked the LED
     previousMillis = currentMillis;
 
-    // Fetch temperatures from Dallas sensors
-    sensors.requestTemperatures();
+    if (ENABLE_FLOAT_PROBE) {
+      // Get the updated value :
+      int floatState1 = debouncer1.read();
+      int floatState2 = debouncer2.read();
 
-    // Read temperature
-    for (int i = BASEMENT1_TEMP1; i < BASEMENT1_TEMP1 + MAX_ATTACHED_TEMP_SENSORS; i++) {
-      float temperature = sensors.getTempFByIndex(i);
+      Serial.print("float 1:");
+      Serial.println(floatState1);
+      Serial.print("float 2:");
+      Serial.println(floatState2);
 
-      // Only send data if temperature has changed and no error
-      if (lastTemperature[i] != temperature && temperature > -127.00 && temperature < 185.00) {
-        if (ENABLE_TEMP_PROBE) {
-          Serial.print("sending different temp: ");
-          Serial.println(temperature);
-          // Send in the new temperature
-          send(msgTemperature.setSensor(i).set(temperature, 2));
-        }
-        // Save new temperatures for next compare
-        lastTemperature[i] = temperature;
-      } else {
-        Serial.print("not sending temp: ");
-        Serial.println(temperature);
+      if(lastFloatState[0] != floatState1){
+         Serial.println("float state change for 1");
+         
+         send(msgFloatSwitch1.set(floatState1));
+         lastFloatState[0] = floatState1;
+      }
+      if(lastFloatState[1] != floatState2){
+         Serial.println("float state change for 2");
+         send(msgFloatSwitch2.set(floatState2));
+         lastFloatState[1] = floatState2;
       }
     }
-    // collect watts
-    double Irms1 = emon1.calcIrms(1480);  // Calculate Irms only
-    double Irms2 = emon2.calcIrms(1480);  // Calculate Irms only
+    
+    if (ENABLE_TEMP_PROBE) {
+      // Fetch temperatures from Dallas sensors
+      sensors.requestTemperatures();
+      Serial.print("connected probes: ");
+      Serial.println(connectedTempuratureProbes);
 
-    double watts1 = Irms1 * 115.0;
-    double watts2 = Irms2 * 115.0;
+      // Read temperature
+      for (int i = 0; i < connectedTempuratureProbes; i++) {
+        float temperature = sensors.getTempFByIndex(i);
+        Serial.print("temp probe: ");
+        Serial.print(i);
+        Serial.print(" ");
+        Serial.println(temperature);
+        
+        // Only send data if temperature has changed and no error
+        if (lastTemperature[i] != temperature && temperature > -127.00 && temperature < 185.00) {
+            Serial.print("sending different temp: ");
+            Serial.println(temperature);
+            // Send in the new temperature
+            send(msgTemperature.setSensor(i + TEMPERATURE_FIRST_ID).set(temperature, 2));
+          // Save new temperatures for next compare
+          lastTemperature[i] = temperature;
+        } else {
+          Serial.print("not sending temp: ");
+          Serial.println(temperature);
+        }
+      }
+    }
+    
+    if (ENABLE_AMP_PROBE) {
+      // collect watts
+      double Irms1 = emon1.calcIrms(1480);  // Calculate Irms only
+      double Irms2 = emon2.calcIrms(1480);  // Calculate Irms only
 
-    if (initialSend) {
-      Serial.print("watts 1: ");
-      Serial.println(watts1);
-      Serial.print("watts 2: ");
-      Serial.println(watts2);
+      double watts1 = Irms1 * 115.0;
+      double watts2 = Irms2 * 115.0;
 
-      // and send the data
-      if (ENABLE_AMP_PROBE) {
-        send(msgClamp1.set(watts1, 1));
-        send(msgClamp2.set(watts2, 1));
+      if (initialSend) {
+        Serial.print("watts 1: ");
+        Serial.println(watts1);
+        Serial.print("watts 2: ");
+        Serial.println(watts2);
+
+        // and send the data
+          send(msgClamp1.set(watts1, 1));
+          send(msgClamp2.set(watts2, 1));
       }
     }
     initialSend = true;
@@ -191,33 +258,26 @@ void loop()
 
 void receive(const MyMessage &message) {
   // We only expect one type of message from controller. But we better check anyway.
-  if (message.type == V_STATUS) {
-    /*
-        switch (message.sensor) {
-          case 1:
-            stateA = message.getBool();
-            digitalWrite(message.sensor + 4, stateA ? RELAY_ON : RELAY_OFF);
-
-            break;
-          case 2:
-            stateB = message.getBool();
-            digitalWrite(message.sensor + 4, stateB ? RELAY_ON : RELAY_OFF);
-
-            break;
-
-        }
-    */
-    int bit2flip = message.sensor - 40;
+  if (message.type == V_LIGHT) {
+    int bit2flip = message.sensor;
+    int state = message.getBool() ? 0 : 1;
 
     // Write some debug info
+    Serial.print("message type: ");
+    Serial.println(message.type);
     Serial.print("Incoming change for sensor:");
     Serial.println(message.sensor);
-    Serial.print("from node:");
+    Serial.print(" from node:");
     Serial.println(message.sender);
     Serial.print("New status: ");
     Serial.println(message.getBool());
-    Serial.print("bit to flip: ");
-    Serial.println(bit2flip);
+    Serial.print(" bit to flip: ");
+    Serial.print(bit2flip);
+    Serial.print(" state change: ");
+    Serial.println(state);
+
+    bitWrite(relayState, bit2flip, state);
+    shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
   }
 }
 
