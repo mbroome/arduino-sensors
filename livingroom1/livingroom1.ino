@@ -2,11 +2,24 @@
 #define MY_RADIO_NRF24
 #define MY_REPEATER_NODE
 
-#include "C:/Users/mbroome/Documents/Arduino/sensors/mysensors_id_list.h"
+#include "C:/Users/mbroome/Documents/Arduino/arduino-sensors/mysensors_id_list.h"
 
 
 #define MY_NODE_ID LIVINGROOM1_NODE_ID
 
+////////////////////////////////////////////////////////
+// define some pins
+const int BUTTON_PIN = 2;     // the number of the pushbutton pin
+const int LED_WHITE_PIN = 6;    // PWM connected to digital pin 5
+const int LED_COLOR_PIN = 5;    // PWM connected to digital pin 6
+
+
+////////////////////////////////////////////////////////
+// define child ids
+#define LIVINGROOM1_TEMP1_ID 10
+
+////////////////////////////////////////////////////////
+// Actually do the work...
 #include <MySensors.h>
 #include <SPI.h>
 #include <Bounce2.h>
@@ -46,34 +59,25 @@ bool lightSchedule[] = {
   false, // 12pm
 };
 
-const int buttonPin = 2;     // the number of the pushbutton pin
 int buttonState = LOW;
 
 
-const int ledWhite = 6;    // PWM connected to digital pin 5
-const int ledColor = 5;    // PWM connected to digital pin 6
 
 #define ONE_WIRE_BUS 3 // Pin where dallase sensor is connected 
 unsigned long SLEEP_TIME = 3000; // Sleep time between reads (in milliseconds)
 OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 DallasTemperature sensors(&oneWire); // Pass the oneWire reference to Dallas Temperature.
 
-boolean receivedConfig = false;
-boolean metric = true;
+unsigned long previousMillis = 0;
+unsigned long nextForceMillis = 0;
+
+float lastTemp;
 
 // Initialize temperature message
-MyMessage msg(LIVINGROOM1_TEMP1, V_TEMP);
+MyMessage msg(LIVINGROOM1_TEMP1_ID, V_TEMP);
 
 // Instantiate a Bounce object :
 Bounce debouncer = Bounce();
-
-unsigned long previousMillis = 0;
-
-void blink() {
-  digitalWrite(13, HIGH);
-  delay(500);
-  digitalWrite(13, LOW);
-}
 
 void setup() {
   Serial.begin(115200);
@@ -81,15 +85,15 @@ void setup() {
   RTC.begin();
 
   Serial.println("Startup");
-  pinMode(ledWhite, OUTPUT);
-  pinMode(ledColor, OUTPUT);
+  pinMode(LED_WHITE_PIN, OUTPUT);
+  pinMode(LED_COLOR_PIN, OUTPUT);
   pinMode(13, OUTPUT);
-  
+
   // initialize the pushbutton pin as an input:
-  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   // After setting up the button, setup the Bounce instance :
-  debouncer.attach(buttonPin);
+  debouncer.attach(BUTTON_PIN);
   debouncer.interval(5);
 
   sensors.setResolution(TEMP_12_BIT); // Genauigkeit auf 12-Bit setzen
@@ -102,14 +106,11 @@ void presentation() {
   sensors.begin();
   sensors.setWaitForConversion(false);
 
-  // Startup and initialize MySensors library. Set callback for incoming messages.
-
-
   // Send the sketch version information to the gateway and Controller
   sendSketchInfo("LivingRoom1", "1.0");
 
   // Present all sensors to controller
-  present(LIVINGROOM1_TEMP1, S_TEMP);
+  present(LIVINGROOM1_TEMP1_ID, S_TEMP);
 }
 
 void changeLight(int pin, int level) {
@@ -117,7 +118,7 @@ void changeLight(int pin, int level) {
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
+  bool forceUpdate = false;
 
   // Update the Bounce instance :
   debouncer.update();
@@ -129,7 +130,15 @@ void loop() {
   }
   //Serial.println(buttonState);
 
+  // wait at least SLEEP_TIME until we poll again
+  unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= SLEEP_TIME) {
+    // force the update if we go over a long time
+    if (currentMillis > nextForceMillis) {
+      nextForceMillis = currentMillis + 300000;
+      Serial.println("### need to force update");
+      forceUpdate = true;
+    }
     // save the last time you blinked the LED
     previousMillis = currentMillis;
 
@@ -153,18 +162,18 @@ void loop() {
 
     if (buttonState) {
       Serial.print("Enable light because of button");
-      changeLight(ledWhite, 60);
-      changeLight(ledColor, 30);
+      changeLight(LED_WHITE_PIN, 60);
+      changeLight(LED_COLOR_PIN, 30);
 
     } else {
       if (lightSchedule[now.hour()]) {
         Serial.print("Enable light");
-        changeLight(ledWhite, 60);
-        changeLight(ledColor, 30);
+        changeLight(LED_WHITE_PIN, 60);
+        changeLight(LED_COLOR_PIN, 30);
       } else {
         Serial.print("Disable light");
-        changeLight(ledWhite, 0);
-        changeLight(ledColor, 0);
+        changeLight(LED_WHITE_PIN, 0);
+        changeLight(LED_COLOR_PIN, 0);
       }
     }
 
@@ -172,15 +181,16 @@ void loop() {
     sensors.requestTemperatures();
     // Read temperatures and send them to controller
     float temperature = sensors.getTempFByIndex(0);
-    Serial.println();
 
-    Serial.println(temperature);
-    Serial.println();
-    send(msg.setSensor(LIVINGROOM1_TEMP1).set(temperature, 1));
+    if ((temperature > -127.00 && temperature < 185.00) && (forceUpdate || offsetDiff(temperature, lastTemp, 0.20))) {
 
-    blink();
+      Serial.println(temperature);
+      Serial.println();
+      send(msg.setSensor(LIVINGROOM1_TEMP1_ID).set(temperature, 2));
+      lastTemp = temperature;
+
+    }
   }
-
 }
 
 

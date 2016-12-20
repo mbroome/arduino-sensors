@@ -54,10 +54,12 @@ OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with a
 DallasTemperature sensors(&oneWire); // Pass the oneWire reference to Dallas Temperature.
 
 #define MAX_ATTACHED_TEMP_SENSORS 10
-
 float lastTemperature[MAX_ATTACHED_TEMP_SENSORS];
+
 int lastFloatState[2];
 unsigned long previousMillis = 0;
+unsigned long nextForceMillis = 0;
+
 bool initialSend = false;
 
 int connectedTempuratureProbes = 0;
@@ -124,7 +126,7 @@ void presentation() {
 
   // Send the sketch version information to the gateway and Controller
   sendSketchInfo("Basement1", "1.0", true);
-      wait(500);
+  wait(500);
 
   // Present all sensors to controller
   if (ENABLE_TEMP_PROBE) {
@@ -142,9 +144,9 @@ void presentation() {
   // Register all sensors to gw (they will be created as child devices)
   if (ENABLE_AMP_PROBE) {
     present(AMPCLAMP_CLAMP1_ID, S_POWER);
-      wait(500);
+    wait(500);
     present(AMPCLAMP_CLAMP2_ID, S_POWER);
-      wait(500);
+    wait(500);
   }
 
   // now we do all of the relays
@@ -159,16 +161,18 @@ void presentation() {
   }
 
   if (ENABLE_FLOAT_PROBE) {
-      present(FLOAT_SWITCH1_ID, S_BINARY, "float1");
-      wait(500);
-      present(FLOAT_SWITCH2_ID, S_BINARY, "float2");
-      wait(500);
+    present(FLOAT_SWITCH1_ID, S_BINARY, "float1");
+    wait(500);
+    present(FLOAT_SWITCH2_ID, S_BINARY, "float2");
+    wait(500);
   }
 }
 
 
 void loop()
 {
+  bool forceUpdate = false;
+
   // Update the Bounce instances :
   debouncer1.update();
   debouncer2.update();
@@ -176,6 +180,13 @@ void loop()
   // wait at least SLEEP_TIME until we poll again
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= SLEEP_TIME) {
+    // force the update if we go over a long time
+    if (currentMillis > nextForceMillis) {
+      nextForceMillis = currentMillis + 300000;
+      Serial.println("### need to force update");
+      forceUpdate = true;
+    }
+
     // save the last time you blinked the LED
     previousMillis = currentMillis;
 
@@ -189,19 +200,19 @@ void loop()
       Serial.print("float 2:");
       Serial.println(floatState2);
 
-      if(lastFloatState[0] != floatState1){
-         Serial.println("float state change for 1");
-         
-         send(msgFloatSwitch1.set(floatState1));
-         lastFloatState[0] = floatState1;
+      if (lastFloatState[0] != floatState1) {
+        Serial.println("float state change for 1");
+
+        send(msgFloatSwitch1.set(floatState1));
+        lastFloatState[0] = floatState1;
       }
-      if(lastFloatState[1] != floatState2){
-         Serial.println("float state change for 2");
-         send(msgFloatSwitch2.set(floatState2));
-         lastFloatState[1] = floatState2;
+      if (lastFloatState[1] != floatState2) {
+        Serial.println("float state change for 2");
+        send(msgFloatSwitch2.set(floatState2));
+        lastFloatState[1] = floatState2;
       }
     }
-    
+
     if (ENABLE_TEMP_PROBE) {
       // Fetch temperatures from Dallas sensors
       sensors.requestTemperatures();
@@ -215,13 +226,14 @@ void loop()
         Serial.print(i);
         Serial.print(" ");
         Serial.println(temperature);
-        
+
         // Only send data if temperature has changed and no error
-        if (lastTemperature[i] != temperature && temperature > -127.00 && temperature < 185.00) {
-            Serial.print("sending different temp: ");
-            Serial.println(temperature);
-            // Send in the new temperature
-            send(msgTemperature.setSensor(i + TEMPERATURE_FIRST_ID).set(temperature, 2));
+        //        if (lastTemperature[i] != temperature && temperature > -127.00 && temperature < 185.00) {
+        if ((temperature > -127.00 && temperature < 185.00) && (forceUpdate || offsetDiff(lastTemperature[i], temperature, 0.20))) {
+          Serial.print("sending different temp: ");
+          Serial.println(temperature);
+          // Send in the new temperature
+          send(msgTemperature.setSensor(i + TEMPERATURE_FIRST_ID).set(temperature, 2));
           // Save new temperatures for next compare
           lastTemperature[i] = temperature;
         } else {
@@ -230,7 +242,7 @@ void loop()
         }
       }
     }
-    
+
     if (ENABLE_AMP_PROBE) {
       // collect watts
       double Irms1 = emon1.calcIrms(1480);  // Calculate Irms only
@@ -246,8 +258,8 @@ void loop()
         Serial.println(watts2);
 
         // and send the data
-          send(msgClamp1.set(watts1, 1));
-          send(msgClamp2.set(watts2, 1));
+        send(msgClamp1.set(watts1, 1));
+        send(msgClamp2.set(watts2, 1));
       }
     }
     initialSend = true;
