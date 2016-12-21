@@ -2,7 +2,7 @@
 #define MY_DEBUG    // Enables debug messages in the serial log
 #define MY_REPEATER_NODE
 
-#include "C:/Users/mbroome/Documents/Arduino/sensors/mysensors_id_list.h"
+#include "Z:/Arduino/arduino-sensors/mysensors_id_list.h"
 
 #define MY_NODE_ID BASEMENT2_NODE_ID
 
