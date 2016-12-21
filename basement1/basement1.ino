@@ -80,6 +80,8 @@ MyMessage msgClamp2(AMPCLAMP_CLAMP2_ID, V_WATT);
 MyMessage msgFloatSwitch1(FLOAT_SWITCH1_ID, V_STATUS);
 MyMessage msgFloatSwitch2(FLOAT_SWITCH2_ID, V_STATUS);
 
+MyMessage msgRelay(RELAY_FIRST_ID, V_LIGHT);
+
 bool initialValueSent = false;
 bool initialValueRecv = false;
 
@@ -157,14 +159,19 @@ void presentation() {
       Serial.println(c);
       present(i, S_LIGHT, c);
       wait(500);
+
+      // tell the controller the current state
+      send(msgRelay.setSensor(i).set(1));
     }
   }
 
   if (ENABLE_FLOAT_PROBE) {
     present(FLOAT_SWITCH1_ID, S_BINARY, "float1");
     wait(500);
+    send(msgFloatSwitch1.set(0));
     present(FLOAT_SWITCH2_ID, S_BINARY, "float2");
     wait(500);
+    send(msgFloatSwitch1.set(0));
   }
 }
 
