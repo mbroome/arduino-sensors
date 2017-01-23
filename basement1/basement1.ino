@@ -207,14 +207,17 @@ void loop()
       Serial.print("float 2:");
       Serial.println(floatState2);
 
-      if (lastFloatState[0] != floatState1) {
-        Serial.println("float state change for 1");
-
+      if (forceUpdate || (lastFloatState[0] != floatState1)) {
+        Serial.print("float state send: 1 => ");
+        Serial.println(floatState1);
+        
         send(msgFloatSwitch1.set(floatState1));
         lastFloatState[0] = floatState1;
       }
-      if (lastFloatState[1] != floatState2) {
-        Serial.println("float state change for 2");
+      if (forceUpdate || (lastFloatState[1] != floatState2)) {
+        Serial.print("float state send: 2 => ");
+        Serial.println(floatState2);
+
         send(msgFloatSwitch2.set(floatState2));
         lastFloatState[1] = floatState2;
       }
