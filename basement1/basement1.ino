@@ -1,8 +1,6 @@
 #define MY_RADIO_NRF24
 #define MY_DEBUG    // Enables debug messages in the serial log
-#define MY_REPEATER_NODE
-
-//#include "C:/Users/mbroome/Documents/Arduino/arduino-sensors/mysensors_id_list.h"
+//#define MY_REPEATER_NODE
 
 #define MY_NODE_ID 6
 
@@ -266,8 +264,8 @@ void loop()
         for (int i = 0; i < 8; i++) {
           bool s = bitRead(relayState, i);
 
-          send(msgRelay.setSensor(i).set(s));
           wait(300);
+          send(msgRelay.setSensor(i).set(s));
         }
       }
     }
