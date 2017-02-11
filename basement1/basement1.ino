@@ -2,9 +2,9 @@
 #define MY_DEBUG    // Enables debug messages in the serial log
 #define MY_REPEATER_NODE
 
-#include "C:/Users/mbroome/Documents/Arduino/arduino-sensors/mysensors_id_list.h"
+//#include "C:/Users/mbroome/Documents/Arduino/arduino-sensors/mysensors_id_list.h"
 
-#define MY_NODE_ID BASEMENT1_NODE_ID
+#define MY_NODE_ID 6
 
 #define ENABLE_TEMP_PROBE  1
 #define ENABLE_RELAY_PROBE 1
@@ -97,6 +97,20 @@ bool initialValueRecv = false;
 
 byte relayState = B11111111;
 
+bool offsetDiff(float a, float b, float offset){
+   Serial.print("a: ");
+   Serial.print(a);
+   Serial.print(" b: ");
+   Serial.print(b);
+   Serial.print(" diff: ");
+   float x = abs(a - b);
+   Serial.println(x);
+   if(x > offset){
+      return(true);
+   }else{
+      return(false);
+   }
+}
 void before() {
   pinMode(SHIFT_REGISTER_DATA_PIN, OUTPUT); // make the data pin an output
   pinMode(SHIFT_REGISTER_CLOCK_PIN, OUTPUT); // make the clock pin an output
@@ -134,7 +148,7 @@ void presentation() {
   sensors.setWaitForConversion(false);
 
   // Send the sketch version information to the gateway and Controller
-  sendSketchInfo("Basement1", "1.0");
+  sendSketchInfo("Basement1", "1.0", false);
   wait(500);
 
   // Present all sensors to controller
@@ -153,9 +167,9 @@ void presentation() {
       present(i, S_LIGHT, RELAY_DESC[i]);
       wait(500);
 
-      // tell the controller the current state
-      send(msgRelay.setSensor(i).set(1));
-      wait(500);
+//      // tell the controller the current state
+//      send(msgRelay.setSensor(i).set(1));
+//      wait(500);
     }
   }
 
@@ -253,6 +267,7 @@ void loop()
           bool s = bitRead(relayState, i);
 
           send(msgRelay.setSensor(i).set(s));
+          wait(300);
         }
       }
     }
