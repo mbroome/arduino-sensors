@@ -7,15 +7,11 @@
 #define MY_NODE_ID BASEMENT1_NODE_ID
 
 #define ENABLE_TEMP_PROBE  1
-#define ENABLE_AMP_PROBE   0
 #define ENABLE_RELAY_PROBE 1
 #define ENABLE_FLOAT_PROBE 1
 
 ////////////////////////////////////////////////////////
 // define some pins
-#define AMPCLAMP_CLAMP1_PIN      6
-#define AMPCLAMP_CLAMP2_PIN      7
-
 #define FLOAT_SWITCH1_PIN        14
 #define FLOAT_SWITCH2_PIN        15
 
@@ -26,11 +22,32 @@
 #define RELAY_FIRST_ID        0
 #define TEMPERATURE_FIRST_ID 10
 
-#define AMPCLAMP_CLAMP1_ID   20
-#define AMPCLAMP_CLAMP2_ID   21
-
 #define FLOAT_SWITCH1_ID     30
 #define FLOAT_SWITCH2_ID     31
+
+char TEMPERATURE_DESC[10][20] = {
+  { "Test Temperature1" },
+  { "Holding Tank" },
+  { "Test Temperature2" },
+  { "Test Temperature3" },
+  { "Test Temperature4" },
+  { "Test Temperature5" },
+  { "Test Temperature6" },
+  { "Test Temperature7" },
+  { "Test Temperature8" },
+  { "Test Temperature9" },
+};
+
+char RELAY_DESC[10][20] = {
+  { "Fish Room Lights" },
+  { "Zone 1" },
+  { "Zone 2" },
+  { "Zone 3" },
+  { "Unused" },
+  { "Water Fill" },
+  { "Pump" },
+  { "Holding Heaters" },
+};
 
 ////////////////////////////////////////////////////////
 // Actually do the work...
@@ -39,10 +56,6 @@
 #include <DallasTemperature.h>
 #include <OneWire.h>
 #include <Bounce2.h>
-
-#include "EmonLib.h"                   // Include Emon Library
-EnergyMonitor emon1;                   // Create an instance
-EnergyMonitor emon2;                   // Create an instance
 
 #define SHIFT_REGISTER_DATA_PIN   4
 #define SHIFT_REGISTER_CLOCK_PIN  5
@@ -73,9 +86,6 @@ Bounce debouncer2 = Bounce();
 
 // Initialize temperature message
 MyMessage msgTemperature(TEMPERATURE_FIRST_ID, V_TEMP);
-
-MyMessage msgClamp1(AMPCLAMP_CLAMP1_ID, V_WATT);
-MyMessage msgClamp2(AMPCLAMP_CLAMP2_ID, V_WATT);
 
 MyMessage msgFloatSwitch1(FLOAT_SWITCH1_ID, V_STATUS);
 MyMessage msgFloatSwitch2(FLOAT_SWITCH2_ID, V_STATUS);
@@ -112,9 +122,6 @@ void setup()
 
   sensors.setResolution(TEMP_12_BIT);
 
-  emon1.current(AMPCLAMP_CLAMP1_PIN, 32.1);             // Current: input pin, calibration.
-  emon2.current(AMPCLAMP_CLAMP2_PIN, 32.1);             // Current: input pin, calibration.
-
   pinMode(LED_PIN, OUTPUT);
 }
 
@@ -127,7 +134,7 @@ void presentation() {
   sensors.setWaitForConversion(false);
 
   // Send the sketch version information to the gateway and Controller
-  sendSketchInfo("Basement1", "1.0", true);
+  sendSketchInfo("Basement1", "1.0");
   wait(500);
 
   // Present all sensors to controller
@@ -135,33 +142,20 @@ void presentation() {
     delay(200);
     connectedTempuratureProbes = sensors.getDeviceCount();
     for (int i = TEMPERATURE_FIRST_ID; i < TEMPERATURE_FIRST_ID + connectedTempuratureProbes; i++) {
-      char c[20];
-      sprintf(c, "temp%d", i);
-      Serial.println(c);
-      present(i, S_TEMP, c);
+      present(i, S_TEMP, TEMPERATURE_DESC[i - TEMPERATURE_FIRST_ID]);
       wait(500);
     }
-  }
-
-  // Register all sensors to gw (they will be created as child devices)
-  if (ENABLE_AMP_PROBE) {
-    present(AMPCLAMP_CLAMP1_ID, S_POWER);
-    wait(500);
-    present(AMPCLAMP_CLAMP2_ID, S_POWER);
-    wait(500);
   }
 
   // now we do all of the relays
   if (ENABLE_RELAY_PROBE) {
     for (int i = 0; i < 8; i++) {
-      char c[20];
-      sprintf(c, "relay%d", i);
-      Serial.println(c);
-      present(i, S_LIGHT, c);
+      present(i, S_LIGHT, RELAY_DESC[i]);
       wait(500);
 
       // tell the controller the current state
       send(msgRelay.setSensor(i).set(1));
+      wait(500);
     }
   }
 
@@ -172,6 +166,7 @@ void presentation() {
     present(FLOAT_SWITCH2_ID, S_BINARY, "float2");
     wait(500);
     send(msgFloatSwitch1.set(0));
+    wait(500);
   }
 }
 
@@ -210,7 +205,7 @@ void loop()
       if (forceUpdate || (lastFloatState[0] != floatState1)) {
         Serial.print("float state send: 1 => ");
         Serial.println(floatState1);
-        
+
         send(msgFloatSwitch1.set(floatState1));
         lastFloatState[0] = floatState1;
       }
@@ -252,24 +247,13 @@ void loop()
         }
       }
     }
+    if (ENABLE_RELAY_PROBE) {
+      if (forceUpdate) {
+        for (int i = 0; i < 8; i++) {
+          bool s = bitRead(relayState, i);
 
-    if (ENABLE_AMP_PROBE) {
-      // collect watts
-      double Irms1 = emon1.calcIrms(1480);  // Calculate Irms only
-      double Irms2 = emon2.calcIrms(1480);  // Calculate Irms only
-
-      double watts1 = Irms1 * 115.0;
-      double watts2 = Irms2 * 115.0;
-
-      if (initialSend) {
-        Serial.print("watts 1: ");
-        Serial.println(watts1);
-        Serial.print("watts 2: ");
-        Serial.println(watts2);
-
-        // and send the data
-        send(msgClamp1.set(watts1, 1));
-        send(msgClamp2.set(watts2, 1));
+          send(msgRelay.setSensor(i).set(s));
+        }
       }
     }
     initialSend = true;
