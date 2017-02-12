@@ -70,7 +70,7 @@ int connectedTempuratureProbes = 0;
 MyMessage msgTemperature(TEMPERATURE_FIRST_ID, V_TEMP);
 
 MyMessage msgRelay(RELAY_1_ID, V_LIGHT);
-int relayState[2] = {false, false};
+int relayState[2] = {true, true};
 
 bool initialValueSent = false;
 bool initialValueRecv = false;
