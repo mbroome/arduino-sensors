@@ -295,7 +295,7 @@ void receive(const MyMessage &message) {
 
     bitWrite(relayState, bit2flip, state);
     shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
-    send(msgRelay.setSensor(message.sensor).set(RELAYSTATE(relayState)));
+    send(msgRelay.setSensor(message.sensor).set(relayState));
   }
 }
 
