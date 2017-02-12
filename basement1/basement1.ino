@@ -55,6 +55,8 @@ char RELAY_DESC[10][20] = {
 #include <OneWire.h>
 #include <Bounce2.h>
 
+#define RELAYSTATE(x) ( x ? 0 : 1)
+
 #define SHIFT_REGISTER_DATA_PIN   4
 #define SHIFT_REGISTER_CLOCK_PIN  5
 
@@ -164,10 +166,6 @@ void presentation() {
     for (int i = 0; i < 8; i++) {
       present(i, S_LIGHT, RELAY_DESC[i]);
       wait(500);
-
-//      // tell the controller the current state
-//      send(msgRelay.setSensor(i).set(1));
-//      wait(500);
     }
   }
 
@@ -262,7 +260,7 @@ void loop()
     if (ENABLE_RELAY_PROBE) {
       if (forceUpdate) {
         for (int i = 0; i < 8; i++) {
-          bool s = bitRead(relayState, i);
+          bool s = RELAYSTATE(bitRead(relayState, i));
 
           wait(300);
           send(msgRelay.setSensor(i).set(s));
@@ -279,7 +277,7 @@ void receive(const MyMessage &message) {
   // We only expect one type of message from controller. But we better check anyway.
   if (message.type == V_LIGHT) {
     int bit2flip = message.sensor;
-    int state = message.getBool() ? 0 : 1;
+    int state = RELAYSTATE(message.getBool());
 
     // Write some debug info
     Serial.print("message type: ");
@@ -297,6 +295,7 @@ void receive(const MyMessage &message) {
 
     bitWrite(relayState, bit2flip, state);
     shiftOut(SHIFT_REGISTER_DATA_PIN, SHIFT_REGISTER_CLOCK_PIN, LSBFIRST, relayState); // send this binary value to the shift register
+    send(msgRelay.setSensor(message.sensor).set(RELAYSTATE(relayState)));
   }
 }
 
