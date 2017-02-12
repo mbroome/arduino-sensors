@@ -1,4 +1,4 @@
-#define MY_RF24_CHANNEL  124
+//#define MY_RF24_CHANNEL  124
 
 #define MY_RADIO_NRF24
 #define MY_DEBUG    // Enables debug messages in the serial log
@@ -7,16 +7,18 @@
 #define MY_NODE_ID 8
 
 #define ENABLE_TEMP_PROBE  1
-
+#define ENABLE_RELAY_PROBE 1
 
 ////////////////////////////////////////////////////////
 // define some pins
-
-
+#define RELAY_1_PIN         4
+#define RELAY_2_PIN         5
 #define LED_PIN            13
 
 ////////////////////////////////////////////////////////
 // define child ids
+#define RELAY_1_ID               0
+#define RELAY_2_ID               1
 #define TEMPERATURE_FIRST_ID     10
 
 ////////////////////////////////////////////////////////
@@ -24,9 +26,24 @@
 
 
 char TEMPERATURE_DESC[10][20] = {
-  { "Test Temperature" },
+  { "Rams" },
+  { "Test Temperature1" },
+  { "Test Temperature2" },
+  { "Test Temperature3" },
+  { "Test Temperature4" },
+  { "Test Temperature5" },
+  { "Test Temperature6" },
+  { "Test Temperature7" },
+  { "Test Temperature8" },
+  { "Test Temperature9" },
 };
 
+char RELAY_DESC[10][20] = {
+  { "Zone 4" },
+  { "Zone 5" },
+};
+
+#define RELAYSTATE(x) ( x ? 0 : 1)
 
 #include <MySensors.h>
 #include <SPI.h>
@@ -42,7 +59,6 @@ DallasTemperature sensors(&oneWire); // Pass the oneWire reference to Dallas Tem
 #define MAX_ATTACHED_TEMP_SENSORS 10
 float lastTemperature[MAX_ATTACHED_TEMP_SENSORS];
 
-int lastFloatState[2];
 unsigned long previousMillis = 0;
 unsigned long nextForceMillis = 0;
 
@@ -53,8 +69,8 @@ int connectedTempuratureProbes = 0;
 // Initialize messages
 MyMessage msgTemperature(TEMPERATURE_FIRST_ID, V_TEMP);
 
-MyMessage msgRelay(0, V_LIGHT);
-int relayState = false;
+MyMessage msgRelay(RELAY_1_ID, V_LIGHT);
+int relayState[2] = {false, false};
 
 bool initialValueSent = false;
 bool initialValueRecv = false;
@@ -80,6 +96,10 @@ void setup()
   Serial.begin(115200);
   Serial.println("Startup");
 
+  pinMode(RELAY_1_PIN, OUTPUT); // make the clock pin an output
+  digitalWrite(RELAY_1_PIN, relayState[RELAY_1_ID]);
+  pinMode(RELAY_2_PIN, OUTPUT); // make the clock pin an output
+  digitalWrite(RELAY_2_PIN, relayState[RELAY_2_ID]);
 
   sensors.setResolution(TEMP_12_BIT);
 }
@@ -105,7 +125,12 @@ void presentation() {
     }
   }
 
-  present(0, S_LIGHT, "relay1");
+  if (ENABLE_RELAY_PROBE) {
+     present(RELAY_1_ID, S_LIGHT, RELAY_DESC[RELAY_1_ID]);
+     wait(500);
+     present(RELAY_2_ID, S_LIGHT, RELAY_DESC[RELAY_2_ID]);
+     wait(500);
+  }
 }
 
 
@@ -155,30 +180,33 @@ void loop()
         }
       }
     }
-    if (forceUpdate) {
-      send(msgRelay.setSensor(0).set(relayState));
+    if (ENABLE_RELAY_PROBE) {
+      if (forceUpdate) {
+          wait(300);
+          send(msgRelay.setSensor(RELAY_1_ID).set(RELAYSTATE(relayState[RELAY_1_ID])));
+          wait(300);
+          send(msgRelay.setSensor(RELAY_2_ID).set(RELAYSTATE(relayState[RELAY_2_ID])));
+      }
     }
+
   }
 }
 
 void receive(const MyMessage &message) {
   // We only expect one type of message from controller. But we better check anyway.
   if (message.type == V_LIGHT) {
-    relayState = message.getBool();
+    int pin;
+    int state = RELAYSTATE(message.getBool());
 
-    // Write some debug info
-    Serial.print("message type: ");
-    Serial.println(message.type);
-    Serial.print("Incoming change for sensor:");
-    Serial.println(message.sensor);
-    Serial.print(" from node:");
-    Serial.println(message.sender);
-    Serial.print("New status: ");
-    Serial.println(message.getBool());
-    Serial.print(" state change: ");
-    Serial.println(relayState);
-    //send(msgRelay.setSensor(0).set(relayState));
-    send(msgRelay.setSensor(0).set(relayState));
+    if(message.sensor == RELAY_1_ID){
+      pin = RELAY_1_PIN;
+    }else if(message.sensor == RELAY_2_ID){
+      pin = RELAY_2_PIN;
+    }
+
+    digitalWrite(pin, state);
+    relayState[message.sensor] = state;
+    send(msgRelay.setSensor(message.sensor).set(RELAYSTATE(relayState[message.sensor])));
 
   }
 }
