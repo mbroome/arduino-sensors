@@ -20,10 +20,10 @@
 
 
 char TEMPERATURE_DESC[10][20] = {
-  { "Test Temperature0" },
-  { "Test Temperature1" },
-  { "Test Temperature2" },
-  { "Test Temperature3" },
+  { "Ghost & Gold Temp" },
+  { "Discus Temp" },
+  { "Koi2 Temp" },
+  { "Blacks Temp" },
   { "Test Temperature4" },
   { "Test Temperature5" },
   { "Test Temperature6" },
